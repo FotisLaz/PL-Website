@@ -1,0 +1,52 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: data-processor-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres:5432/prem_stats
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  
+  flyway:
+    enabled: false  # Disable flyway since the main service handles migrations
+  
+  kafka:
+    bootstrap-servers: kafka:9092
+    consumer:
+      group-id: data-processor-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: "com.example.dataprocessor.model"
+    listener:
+      ack-mode: manual
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.example.dataprocessor: DEBUG
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN 

@@ -1,0 +1,53 @@
+# Environment Variables
+.env
+.env.local
+.env.production
+.env.development
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven
+Backend/target/
+Backend/data-processor-service/target/
+
+# Node
+Frontend/node_modules/
+Frontend/build/
+Frontend/.env
+
+# Docker
+.docker/
+
+# Personal/Sensitive Files
+personal-notes.txt
+credentials.txt
+secrets/
+
+# AWS
+.aws/
+aws-credentials.json
+
+# Terminal Commands (contains sensitive SQL)
+Terminal Commands.sql
+
+# Guide files (not needed in production repo)
+aws-setup-guide.md
+DEPLOYMENT_STEPS.md
+AWS_CLEANUP_GUIDE.md
+INTERVIEW_PORTFOLIO.md

@@ -1,0 +1,86 @@
+.match-prediction {
+    background: #f4f4f4;
+    padding: 20px;
+    border-radius: 10px;
+    max-width: 600px;
+    margin: 150px auto; /* Increased margin to push it below the overlapping section */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.match-prediction h1 {
+    font-size: 24px;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: flex;
+    flex-direction: column;
+    font-size: 16px;
+    color: #555;
+}
+
+.input-group input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+button {
+    padding: 10px 20px;
+    background-color: #617687;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #455a64;
+}
+
+.prediction-result {
+    margin-top: 20px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.prediction-result .result-win {
+    color: #8A2BE2; /* Bright Purple (BlueViolet) */
+}
+
+.prediction-result .result-draw {
+    color: #8A2BE2; /* Bright Purple (BlueViolet) */
+}
+
+.error-message {
+    color: red;
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+/* Adjust Sidebar styles to prevent overlapping */
+.nav-bar {
+    z-index: 2; /* Ensure it doesn't overlap main content */
+}
+
+nav {
+    position: static; /* Prevent fixed nav from overlaying content */
+    display: none; /* Hide sidebar by default */
+}
+
+.nav-bar.mobile-show nav {
+    display: block; /* Show nav only when menu is active */
+}
