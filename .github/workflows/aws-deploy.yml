@@ -1,4 +1,4 @@
-name: Deploy to AWS
+name: CI/CD Pipeline
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: Run Tests
 
     steps:
       - uses: actions/checkout@v3
@@ -42,36 +43,38 @@ jobs:
           npm ci
           npm test -- --watchAll=false
 
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd premiere-league-stats
-            git pull origin main
-
-            # Update environment variables
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
-            echo "DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME }}" >> .env
-            echo "DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}" >> .env
-            echo "KAFKA_BOOTSTRAP_SERVERS=kafka:29092" >> .env
-
-            # Deploy with Docker Compose
-            docker-compose down
-            docker-compose build --no-cache
-            docker-compose up -d
-
-            # Health check
-            sleep 30
-            curl -f http://localhost:8080/actuator/health || exit 1
-            curl -f http://localhost:3000 || exit 1
+  # AWS Deployment - Disabled until AWS infrastructure is set up
+  # Uncomment and configure secrets when ready to deploy to AWS
+  # deploy:
+  #   needs: test
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #
+  #     - name: Deploy to EC2
+  #       uses: appleboy/ssh-action@v0.1.5
+  #       with:
+  #         host: ${{ secrets.EC2_HOST }}
+  #         username: ${{ secrets.EC2_USER }}
+  #         key: ${{ secrets.EC2_SSH_KEY }}
+  #         script: |
+  #           cd premiere-league-stats
+  #           git pull origin main
+  #
+  #           # Update environment variables
+  #           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" > .env
+  #           echo "DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME }}" >> .env
+  #           echo "DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}" >> .env
+  #           echo "KAFKA_BOOTSTRAP_SERVERS=kafka:29092" >> .env
+  #
+  #           # Deploy with Docker Compose
+  #           docker-compose down
+  #           docker-compose build --no-cache
+  #           docker-compose up -d
+  #
+  #           # Health check
+  #           sleep 30
+  #           curl -f http://localhost:8080/actuator/health || exit 1
+  #           curl -f http://localhost:3000 || exit 1
