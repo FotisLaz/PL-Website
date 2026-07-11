@@ -1,10 +1,10 @@
 package com.example.pl_connect.player;
 
 import jakarta.persistence.*;
-
+import java.io.Serializable;
 @Entity
 @Table(name = "player_stats")
-public class Player {
+public class Player implements Serializable {
     @Id
     @Column(name = "player_name", unique = true)
     private String name;
