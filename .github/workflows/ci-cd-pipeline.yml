@@ -18,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Tests
 
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
