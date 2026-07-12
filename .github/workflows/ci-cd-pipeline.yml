@@ -65,20 +65,22 @@ jobs:
           restore-keys: ${{ runner.os }}-m2
 
       - name: Run Backend Tests
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pl_connect_test
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgres
+          SPRING_DATA_REDIS_HOST: localhost
+          SPRING_DATA_REDIS_PORT: 6379
+          SPRING_REDIS_HOST: localhost
+          SPRING_REDIS_PORT: 6379
         run: |
           cd Backend
-          # Αναμονή για το Postgres
           echo "Waiting for postgres..."
           for i in {1..30}; do
             pg_isready -h localhost -p 5432 -U postgres && break || sleep 1
           done
-          # Τρέξιμο των tests με overrides για τη βάση ΚΑΙ ΤΟ REDIS
-          mvn -Dspring.datasource.url=jdbc:postgresql://localhost:5432/pl_connect_test \
-              -Dspring.datasource.username=postgres \
-              -Dspring.datasource.password=postgres \
-              -Dspring.data.redis.host=localhost \
-              -Dspring.data.redis.port=6379 \
-              -Dspring.profiles.active=test clean test
+          mvn clean test
 
       - name: Run Data Processor Tests
         run: |
