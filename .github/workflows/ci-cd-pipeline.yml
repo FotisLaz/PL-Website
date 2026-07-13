@@ -67,19 +67,10 @@ jobs:
       - name: Run Backend Tests
         env:
           SPRING_PROFILES_ACTIVE: test
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pl_connect_test
-          SPRING_DATASOURCE_USERNAME: postgres
-          SPRING_DATASOURCE_PASSWORD: postgres
           SPRING_DATA_REDIS_HOST: localhost
           SPRING_DATA_REDIS_PORT: 6379
-          SPRING_REDIS_HOST: localhost
-          SPRING_REDIS_PORT: 6379
         run: |
           cd Backend
-          echo "Waiting for postgres..."
-          for i in {1..30}; do
-            pg_isready -h localhost -p 5432 -U postgres && break || sleep 1
-          done
           mvn clean test
 
       - name: Run Data Processor Tests
