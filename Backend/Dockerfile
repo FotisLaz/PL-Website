@@ -17,24 +17,22 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Production stage
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jre
 
-# Install Python, pip, curl and required Python packages
-RUN apt-get update && apt-get install -y \
+# Install curl (health check) and Python with venv support
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     python3 \
-    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Create symbolic link for python command
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
-# Install Python packages required for prediction
-RUN pip3 install --no-cache-dir \
-    pandas \
-    xgboost \
-    scikit-learn \
-    numpy
+# Install the prediction packages in a virtual environment (Ubuntu blocks
+# system-wide pip installs, PEP 668). The venv is first on PATH, so the
+# "python" command started by PredictionService uses it.
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Set working directory
 WORKDIR /app
