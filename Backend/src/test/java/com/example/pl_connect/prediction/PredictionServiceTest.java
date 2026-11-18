@@ -70,6 +70,24 @@ class PredictionServiceTest {
     }
 
     @Test
+    void shouldRejectAnUnknownTeamReportedByThePredictor() throws Exception {
+        assertThatThrownBy(() -> fakeService("invalid", 30).getPrediction("Arsnal", "Chelsea"))
+                .isInstanceOf(InvalidTeamException.class)
+                .hasMessage("Unknown team: Arsnal");
+    }
+
+    @Test
+    void shouldRejectMissingTeamsWithoutStartingThePredictor() throws Exception {
+        // "crash" would give PredictionUnavailableException if a process were started
+        PredictionService service = fakeService("crash", 30);
+
+        assertThatThrownBy(() -> service.getPrediction("  ", "Chelsea"))
+                .isInstanceOf(InvalidTeamException.class);
+        assertThatThrownBy(() -> service.getPrediction("Arsenal", null))
+                .isInstanceOf(InvalidTeamException.class);
+    }
+
+    @Test
     void shouldFailWhenPythonCannotBeStarted() {
         // Given
         PredictionService service = new PredictionService("no-such-python-executable", "prediction", 10);
