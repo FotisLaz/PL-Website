@@ -12,7 +12,8 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+// The test profile uses the in-memory cache; this test checks the Redis cache config
+@SpringBootTest(properties = "spring.cache.type=redis")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @ActiveProfiles("test")
 class CacheTtlTest {
