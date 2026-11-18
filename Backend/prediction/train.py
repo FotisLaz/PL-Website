@@ -32,7 +32,10 @@ map_values = {
     "Tottenham Hotspur": "Tottenham",
     "West Ham United": "West Ham",
     "Wolverhampton Wanderers": "Wolves",
-    "Newcastle United": "Newcastle Utd"
+    "Newcastle United": "Newcastle Utd",
+    # The opponent column already uses the short names of these two as well
+    "Sheffield United": "Sheffield Utd",
+    "West Bromwich Albion": "West Brom"
 }
 
 matches["team"] = matches["team"].map(map_values).fillna(matches["team"])
@@ -142,12 +145,16 @@ accuracy = accuracy_score(test_y, preds)
 precision = precision_score(test_y, preds)
 print(f"Test set ({len(test)} rows): accuracy {accuracy:.4f}, precision {precision:.4f}")
 
-# What predict.py needs per team: the values of its most recent match
+# The "opp" feature value of each team, i.e. its code when it is the opponent
+opp_codes = dict(zip(matches["opponent"], matches["opp"]))
+
+# What predict.py needs per team: its "opp" code (used when it is team2) and the values of its
+# most recent match (used when it is team1)
 team_data = {}
 for team in sorted(matches["team"].unique()):
     latest = matches[matches["team"] == team].sort_values("date").iloc[-1]
     team_data[team] = {
-        "opp": int(latest["opp"]),
+        "opp": int(opp_codes[team]),
         "hour": int(latest["hour"]),
         "day": int(latest["day"]),
         "team_elo": float(latest["team_elo"]),
