@@ -293,6 +293,42 @@ class PlayerIntegrationTest {
         }
 
         @Test
+        void shouldUpdatePlayerStats() {
+                // Given: Saka has 5.0 goals in setUp
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> request = new HttpEntity<>(
+                                "{\"name\":\"Bukayo Saka\",\"nation\":\"England\",\"pos\":\"RW\",\"team\":\"Arsenal\",\"gls\":7.0}",
+                                headers);
+
+                // When
+                ResponseEntity<Player> response = restTemplate.exchange(baseUrl, HttpMethod.PUT, request, Player.class);
+
+                // Then
+                assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+                ResponseEntity<List<Player>> getResponse = restTemplate.exchange(
+                                baseUrl + "?name=saka",
+                                HttpMethod.GET,
+                                null,
+                                new ParameterizedTypeReference<List<Player>>() {
+                                });
+                assertThat(getResponse.getBody()).hasSize(1);
+                assertThat(getResponse.getBody().get(0).getGls()).isEqualTo(7.0);
+        }
+
+        @Test
+        void shouldRejectPlayerWithoutName() {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> request = new HttpEntity<>("{\"team\":\"Arsenal\",\"pos\":\"MF\"}", headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(baseUrl, request, String.class);
+
+                assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(playerRepository.count()).isEqualTo(2);
+        }
+
+        @Test
         void shouldDeletePlayer() {
                 // When
                 ResponseEntity<String> response = restTemplate.exchange(

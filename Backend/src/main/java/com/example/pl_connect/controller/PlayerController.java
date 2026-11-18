@@ -43,6 +43,10 @@ public class PlayerController {
 
     @PostMapping
     public ResponseEntity<Player> addPlayer(@RequestBody Player player) {
+        // The name is the primary key, so a player without one cannot be saved
+        if (player.getName() == null || player.getName().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
         Player createdPlayer = playerService.addPlayer(player);
         return new ResponseEntity<>(createdPlayer, HttpStatus.CREATED);
     }

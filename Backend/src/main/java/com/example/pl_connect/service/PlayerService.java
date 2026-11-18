@@ -76,6 +76,17 @@ public class PlayerService {
             playerToUpdate.setTeam(updatedPlayer.getTeam());
             playerToUpdate.setPos(updatedPlayer.getPos());
             playerToUpdate.setNation(updatedPlayer.getNation());
+            playerToUpdate.setAge(updatedPlayer.getAge());
+            playerToUpdate.setMp(updatedPlayer.getMp());
+            playerToUpdate.setStarts(updatedPlayer.getStarts());
+            playerToUpdate.setMin(updatedPlayer.getMin());
+            playerToUpdate.setGls(updatedPlayer.getGls());
+            playerToUpdate.setAst(updatedPlayer.getAst());
+            playerToUpdate.setPk(updatedPlayer.getPk());
+            playerToUpdate.setCrdy(updatedPlayer.getCrdy());
+            playerToUpdate.setCrdr(updatedPlayer.getCrdr());
+            playerToUpdate.setXg(updatedPlayer.getXg());
+            playerToUpdate.setXag(updatedPlayer.getXag());
             playerRepository.save(playerToUpdate);
             return playerToUpdate;
         }
