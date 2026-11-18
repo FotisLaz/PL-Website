@@ -13,7 +13,7 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none  # the backend owns the schema (Flyway)
     show-sql: true
     properties:
       hibernate:
