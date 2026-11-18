@@ -44,7 +44,7 @@ public class DataInitializer {
                         }
 
                         while ((line = reader.readLine()) != null) {
-                            String[] data = line.split(",", -1); // -1 to keep trailing empty strings
+                            String[] data = splitCsvLine(line);
 
                             if (data.length != 15 || "Squad Total".equals(data[0])) {
                                 log.warn("Skipping malformed or summary line: {}", line);
@@ -92,6 +92,32 @@ public class DataInitializer {
                 log.info("Database already contains data. Skipping preloading.");
             }
         };
+    }
+
+    // Splits one CSV line on commas outside double quotes, so a quoted field like "FW,MF" stays one field.
+    // "" inside a quoted field is a literal quote. Trailing empty fields are kept.
+    static String[] splitCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"');
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c == ',' && !inQuotes) {
+                fields.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        fields.add(current.toString());
+        return fields.toArray(new String[0]);
     }
 
     // Helper methods for safe number parsing
