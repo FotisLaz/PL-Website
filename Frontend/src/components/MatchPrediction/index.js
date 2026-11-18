@@ -34,7 +34,19 @@ const MatchPrediction = () => {
       );
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const error = new Error(`HTTP error! status: ${response.status}`);
+        // 400 means the teams were rejected; the server says why ({"error": "..."})
+        if (response.status === 400) {
+          try {
+            const body = await response.json();
+            if (typeof body.error === "string") {
+              error.serverMessage = body.error;
+            }
+          } catch (parseError) {
+            // No JSON body: fall back to the generic message
+          }
+        }
+        throw error;
       }
 
       const data = await response.json();
@@ -60,7 +72,8 @@ const MatchPrediction = () => {
     } catch (err) {
       console.error(err);
       setError(
-        "An error occurred while predicting the match. Please try again."
+        err.serverMessage ||
+          "An error occurred while predicting the match. Please try again."
       );
     } finally {
       setLoading(false);

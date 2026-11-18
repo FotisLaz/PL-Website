@@ -118,4 +118,25 @@ describe("MatchPrediction Component", () => {
       ).toBeInTheDocument();
     });
   });
+
+  test("displays the server's message when the teams are rejected (400)", async () => {
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "Unknown team: Arsnal" }),
+    });
+
+    render(<MatchPrediction />);
+    fireEvent.change(screen.getByPlaceholderText("Enter Team 1"), {
+      target: { value: "Arsnal" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Enter Team 2"), {
+      target: { value: "Chelsea" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Predict/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Unknown team: Arsnal")).toBeInTheDocument();
+    });
+  });
 });
