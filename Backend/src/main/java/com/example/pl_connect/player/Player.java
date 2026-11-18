@@ -102,91 +102,91 @@ public class Player implements Serializable {
         this.pos = pos;
     }
 
-    public int getAge() {
+    public Integer getAge() {
         return age;
     }
 
-    public void setAge(int age) {
+    public void setAge(Integer age) {
         this.age = age;
     }
 
-    public int getMp() {
+    public Integer getMp() {
         return mp;
     }
 
-    public void setMp(int mp) {
+    public void setMp(Integer mp) {
         this.mp = mp;
     }
 
-    public int getStarts() {
+    public Integer getStarts() {
         return starts;
     }
 
-    public void setStarts(int starts) {
+    public void setStarts(Integer starts) {
         this.starts = starts;
     }
 
-    public double getMin() {
+    public Double getMin() {
         return min;
     }
 
-    public void setMin(double min) {
+    public void setMin(Double min) {
         this.min = min;
     }
 
-    public double getGls() {
+    public Double getGls() {
         return gls;
     }
 
-    public void setGls(double gls) {
+    public void setGls(Double gls) {
         this.gls = gls;
     }
 
-    public double getAst() {
+    public Double getAst() {
         return ast;
     }
 
-    public void setAst(double ast) {
+    public void setAst(Double ast) {
         this.ast = ast;
     }
 
-    public double getPk() {
+    public Double getPk() {
         return pk;
     }
 
-    public void setPk(double pk) {
+    public void setPk(Double pk) {
         this.pk = pk;
     }
 
-    public double getCrdy() {
+    public Double getCrdy() {
         return crdy;
     }
 
-    public void setCrdy(double crdy) {
+    public void setCrdy(Double crdy) {
         this.crdy = crdy;
     }
 
-    public double getCrdr() {
+    public Double getCrdr() {
         return crdr;
     }
 
-    public void setCrdr(double crdr) {
+    public void setCrdr(Double crdr) {
         this.crdr = crdr;
     }
 
-    public double getXg() {
+    public Double getXg() {
         return xg;
     }
 
-    public void setXg(double xg) {
+    public void setXg(Double xg) {
         this.xg = xg;
     }
 
-    public double getXag() {
+    public Double getXag() {
         return xag;
     }
 
-    public void setXag(double xag) {
+    public void setXag(Double xag) {
         this.xag = xag;
     }
 

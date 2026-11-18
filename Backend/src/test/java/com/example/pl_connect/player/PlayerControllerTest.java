@@ -251,6 +251,35 @@ class PlayerControllerTest {
     }
 
     @Test
+    void shouldAddPlayerWithMissingStats() throws Exception {
+        // Given: only name, team and position; every stat is missing
+        when(playerService.addPlayer(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/player")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"New Signing\",\"team\":\"Arsenal\",\"pos\":\"MF\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name", is("New Signing")))
+                .andExpect(jsonPath("$.gls", nullValue()))
+                .andExpect(jsonPath("$.age", nullValue()));
+    }
+
+    @Test
+    void shouldUpdatePlayerWithMissingStats() throws Exception {
+        // Given
+        when(playerService.updatePlayer(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // When & Then
+        mockMvc.perform(put("/api/v1/player")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Bukayo Saka\",\"team\":\"Arsenal\",\"pos\":\"LW\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pos", is("LW")))
+                .andExpect(jsonPath("$.xg", nullValue()));
+    }
+
+    @Test
     void shouldReturnNotFoundWhenUpdatingNonExistentPlayer() throws Exception {
         // Given
         Player nonExistentPlayer = new Player();

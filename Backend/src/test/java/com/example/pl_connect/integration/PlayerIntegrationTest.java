@@ -215,6 +215,37 @@ class PlayerIntegrationTest {
         }
 
         @Test
+        void shouldAddAndUpdatePlayerWithMissingStats() {
+                // Given: a player without any stats
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<String> postRequest = new HttpEntity<>(
+                                "{\"name\":\"New Signing\",\"team\":\"Arsenal\",\"pos\":\"MF\"}", headers);
+
+                // When: POST, then PUT the same player (still without stats)
+                ResponseEntity<Player> postResponse = restTemplate.postForEntity(baseUrl, postRequest, Player.class);
+                HttpEntity<String> putRequest = new HttpEntity<>(
+                                "{\"name\":\"New Signing\",\"team\":\"Arsenal\",\"pos\":\"FW\"}", headers);
+                ResponseEntity<Player> putResponse = restTemplate.exchange(
+                                baseUrl, HttpMethod.PUT, putRequest, Player.class);
+
+                // Then
+                assertThat(postResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+                assertThat(putResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+                assertThat(putResponse.getBody().getPos()).isEqualTo("FW");
+
+                ResponseEntity<List<Player>> getResponse = restTemplate.exchange(
+                                baseUrl + "?name=New Signing",
+                                HttpMethod.GET,
+                                null,
+                                new ParameterizedTypeReference<List<Player>>() {
+                                });
+                assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+                assertThat(getResponse.getBody()).hasSize(1);
+                assertThat(getResponse.getBody().get(0).getGls()).isNull();
+        }
+
+        @Test
         void shouldUpdateExistingPlayer() {
                 // Given
                 Player updatedPlayer = new Player();
