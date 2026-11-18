@@ -28,49 +28,49 @@ class MatchPredictionControllerTest {
     void shouldReturnPredictionWhenValidRequest() throws Exception {
         // Given
         MatchPredictionRequest request = new MatchPredictionRequest("Arsenal", "Chelsea");
-        String expectedPrediction = "Arsenal is likely to win with 65% probability";
 
         when(predictionService.getPrediction("Arsenal", "Chelsea"))
-                .thenReturn(expectedPrediction);
+                .thenReturn(objectMapper.readTree("{\"Result\": \"Arsenal Wins\", \"Probability\": 0.65}"));
 
         // When & Then
         mockMvc.perform(post("/api/match-prediction")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(content().string(expectedPrediction));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.Result").value("Arsenal Wins"))
+                .andExpect(jsonPath("$.Probability").value(0.65));
     }
 
     @Test
-    void shouldReturnErrorWhenPredictionServiceThrowsException() throws Exception {
+    void shouldReturn503WhenPredictionIsUnavailable() throws Exception {
         // Given
         MatchPredictionRequest request = new MatchPredictionRequest("Arsenal", "Chelsea");
 
         when(predictionService.getPrediction("Arsenal", "Chelsea"))
-                .thenThrow(new RuntimeException("Python script not found"));
+                .thenThrow(new PredictionUnavailableException("Prediction timed out after 10 s", null));
 
-        // When & Then
+        // When & Then: a generic message, not the internal one
         mockMvc.perform(post("/api/match-prediction")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isInternalServerError())
-                .andExpect(content().string("Error: Python script not found"));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("Prediction is unavailable right now, please try again later"));
     }
 
     @Test
     void shouldReturnPredictionForDifferentTeams() throws Exception {
         // Given
         MatchPredictionRequest request = new MatchPredictionRequest("Liverpool", "Manchester City");
-        String expectedPrediction = "Draw is most likely with 40% probability";
 
         when(predictionService.getPrediction("Liverpool", "Manchester City"))
-                .thenReturn(expectedPrediction);
+                .thenReturn(objectMapper.readTree("{\"Result\": \"Draw\", \"Probability\": 0.5}"));
 
         // When & Then
         mockMvc.perform(post("/api/match-prediction")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(content().string(expectedPrediction));
+                .andExpect(jsonPath("$.Result").value("Draw"));
     }
 }

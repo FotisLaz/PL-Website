@@ -1,8 +1,11 @@
 package com.example.pl_connect.prediction;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/match-prediction")
@@ -18,10 +21,11 @@ public class MatchPredictionController {
     @PostMapping
     public ResponseEntity<?> predictMatch(@RequestBody MatchPredictionRequest request) {
         try {
-            String result = predictionService.getPrediction(request.getTeam1(), request.getTeam2());
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return ResponseEntity.ok(predictionService.getPrediction(request.getTeam1(), request.getTeam2()));
+        } catch (PredictionUnavailableException e) {
+            // PredictionService logs the details; the client gets a generic message
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Prediction is unavailable right now, please try again later"));
         }
     }
 }
