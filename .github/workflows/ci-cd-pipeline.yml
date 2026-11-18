@@ -1,236 +1,96 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
     branches: [main, develop]
+  pull_request:
 
-env:
-  AWS_REGION: eu-west-1
-  ECR_REPOSITORY_BACKEND: pl-backend-api
-  ECR_REPOSITORY_PROCESSOR: pl-data-processor
-  ECR_REPOSITORY_FRONTEND: pl-frontend
-  ECR_REPOSITORY_SCRAPER: pl-scraper
+permissions:
+  contents: read
 
 jobs:
-  test:
+  backend:
+    name: Backend tests
     runs-on: ubuntu-latest
-    name: Run Tests
-
-    services:
-      redis:
-        image: redis:alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      postgres:
-        image: postgres:15-alpine
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: pl_connect_test
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    defaults:
+      run:
+        working-directory: Backend
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: "temurin"
+          cache: maven
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      # Test profile: H2 database and in-memory cache, so no Postgres or Redis is needed
+      - name: Run tests
+        run: ./mvnw -B test
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: "18"
-          cache: "npm"
+          name: backend-surefire-reports
+          path: Backend/target/surefire-reports/
+
+  data-processor:
+    name: Data processor tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: maven
+
+      # The data processor has no wrapper of its own, so it uses the Backend one
+      - name: Run tests
+        run: ./mvnw -B -f data-processor-service/pom.xml test
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-processor-surefire-reports
+          path: Backend/data-processor-service/target/surefire-reports/
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
           cache-dependency-path: Frontend/package-lock.json
 
-      - name: Cache Maven dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+      - run: npm ci
 
-      - name: Run Backend Tests
-        env:
-          SPRING_PROFILES_ACTIVE: test
-          REDIS_HOST: localhost
-        run: |
-          cd Backend
-          mvn clean test
+      - name: Run tests
+        run: npm test -- --watchAll=false
 
-      - name: Run Data Processor Tests
-        run: |
-          cd Backend/data-processor-service
-          mvn clean test
+      # CI=true (set by GitHub Actions) makes ESLint warnings fail the build
+      - name: Build
+        run: npm run build
 
-      - name: Install Frontend Dependencies
-        run: |
-          cd Frontend
-          npm ci
-
-      - name: Run Frontend Tests
-        run: |
-          cd Frontend
-          npm test -- --coverage --watchAll=false
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results
-          path: |
-            Backend/target/surefire-reports/
-            Backend/data-processor-service/target/surefire-reports/
-            Frontend/coverage/
-
-  build-and-push:
-    needs: test
+  docker:
+    name: Build Docker images
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    name: Build and Push Docker Images
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Backend API image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --push \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:latest \
-            ./Backend
-
-      - name: Build and push Data Processor image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --push \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_PROCESSOR:$IMAGE_TAG \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_PROCESSOR:latest \
-            ./Backend/data-processor-service
-
-      - name: Build and push Frontend image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --push \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:latest \
-            ./Frontend
-
-      - name: Build and push Scraper image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            --push \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_SCRAPER:$IMAGE_TAG \
-            --tag $ECR_REGISTRY/$ECR_REPOSITORY_SCRAPER:latest \
-            ./DataScraping
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    name: Deploy to AWS
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Deploy to EC2
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          # Create deployment script
-          cat > deploy.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          export ECR_REGISTRY=$1
-          export IMAGE_TAG=$2
-
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_PROCESSOR:$IMAGE_TAG
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG
-
-          sed -i "s|image: .*backend.*|image: $ECR_REGISTRY/$ECR_REPOSITORY_BACKEND:$IMAGE_TAG|g" docker-compose.prod.yml
-          sed -i "s|image: .*processor.*|image: $ECR_REGISTRY/$ECR_REPOSITORY_PROCESSOR:$IMAGE_TAG|g" docker-compose.prod.yml
-          sed -i "s|image: .*frontend.*|image: $ECR_REGISTRY/$ECR_REPOSITORY_FRONTEND:$IMAGE_TAG|g" docker-compose.prod.yml
-
-          docker-compose -f docker-compose.prod.yml up -d --remove-orphans
-
-          docker image prune -f
-          EOF
-
-          chmod +x deploy.sh
-
-          scp -i ${{ secrets.EC2_SSH_KEY }} -o StrictHostKeyChecking=no \
-            deploy.sh docker-compose.prod.yml \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/
-
-          ssh -i ${{ secrets.EC2_SSH_KEY }} -o StrictHostKeyChecking=no \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-            "./deploy.sh $ECR_REGISTRY $IMAGE_TAG"
-
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ ${{ job.status }} == 'success' ]; then
-            echo "✅ Deployment successful!"
-          else
-            echo "❌ Deployment failed!"
-          fi
+      # Builds all 4 images (backend, data processor, frontend, scraper); nothing is pushed
+      - name: Build images
+        run: docker compose --profile scraper build
