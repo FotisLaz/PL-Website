@@ -34,6 +34,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
+# Train the prediction model once, at build time; predict.py loads the saved
+# model on each request. The second command is a smoke test: the build fails
+# if the saved model cannot make a prediction.
+COPY prediction/ /app/prediction/
+RUN cd /app/prediction && python train.py && python predict.py Arsenal Chelsea
+
 # Set working directory
 WORKDIR /app
 
