@@ -21,6 +21,11 @@ public class FakePredictor {
                 System.exit(1);
             }
             case "garbage" -> System.out.println("not json");
+            case "invalid" -> {
+                // What predict.py does for an unknown team
+                System.out.println("{\"error\": \"Unknown team: " + args[1] + "\"}");
+                System.exit(3);
+            }
             default -> throw new IllegalArgumentException("Unknown mode: " + mode);
         }
     }

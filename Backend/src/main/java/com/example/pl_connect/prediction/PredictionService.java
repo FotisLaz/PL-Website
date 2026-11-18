@@ -19,6 +19,8 @@ public class PredictionService {
 
     private static final Logger log = LoggerFactory.getLogger(PredictionService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    // predict.py exits with this code for unknown or identical teams (see predict.py)
+    static final int INVALID_TEAMS_EXIT_CODE = 3;
 
     // python + predict.py; the model it loads is trained when the Docker image is built
     private final List<String> command;
@@ -38,6 +40,10 @@ public class PredictionService {
     }
 
     public JsonNode getPrediction(String team1, String team2) {
+        // Checked here, so no Python process starts; predict.py checks the names themselves
+        if (team1 == null || team1.isBlank() || team2 == null || team2.isBlank()) {
+            throw new InvalidTeamException("team1 and team2 are required");
+        }
         List<String> fullCommand = new ArrayList<>(command);
         fullCommand.add(team1);
         fullCommand.add(team2);
@@ -57,6 +63,9 @@ public class PredictionService {
                 throw unavailable("Prediction timed out after " + timeoutSeconds + " s: " + fullCommand, null);
             }
             String stdout = Files.readString(output).trim();
+            if (process.exitValue() == INVALID_TEAMS_EXIT_CODE) {
+                throw new InvalidTeamException(MAPPER.readTree(stdout).path("error").asText("Invalid teams"));
+            }
             if (process.exitValue() != 0) {
                 throw unavailable("Prediction exited with code " + process.exitValue() + ": " + fullCommand, null);
             }

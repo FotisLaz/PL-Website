@@ -43,6 +43,22 @@ class MatchPredictionControllerTest {
     }
 
     @Test
+    void shouldReturn400ForAnUnknownTeam() throws Exception {
+        // Given
+        MatchPredictionRequest request = new MatchPredictionRequest("Arsnal", "Chelsea");
+
+        when(predictionService.getPrediction("Arsnal", "Chelsea"))
+                .thenThrow(new InvalidTeamException("Unknown team: Arsnal"));
+
+        // When & Then
+        mockMvc.perform(post("/api/match-prediction")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Unknown team: Arsnal"));
+    }
+
+    @Test
     void shouldReturn503WhenPredictionIsUnavailable() throws Exception {
         // Given
         MatchPredictionRequest request = new MatchPredictionRequest("Arsenal", "Chelsea");

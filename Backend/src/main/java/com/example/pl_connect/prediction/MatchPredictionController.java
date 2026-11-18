@@ -22,6 +22,8 @@ public class MatchPredictionController {
     public ResponseEntity<?> predictMatch(@RequestBody MatchPredictionRequest request) {
         try {
             return ResponseEntity.ok(predictionService.getPrediction(request.getTeam1(), request.getTeam2()));
+        } catch (InvalidTeamException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (PredictionUnavailableException e) {
             // PredictionService logs the details; the client gets a generic message
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
