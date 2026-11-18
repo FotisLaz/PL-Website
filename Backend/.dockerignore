@@ -1,3 +1,4 @@
 target
 data-processor-service
 prediction/model
+prediction/tests
