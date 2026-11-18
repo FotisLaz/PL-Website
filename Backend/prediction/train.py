@@ -62,9 +62,12 @@ def update_elo(team, opponent, result, current_elo):
     return current_elo
 
 
-def calculate_head_to_head(matches, team1, team2):
+def calculate_head_to_head(matches, team1, team2, before=None):
     h2h_matches = matches[((matches["team"] == team1) & (matches["opponent"] == team2)) |
                           ((matches["team"] == team2) & (matches["opponent"] == team1))]
+    if before is not None:
+        # Only matches played before this date, so a training row cannot see its own or later results
+        h2h_matches = h2h_matches[h2h_matches["date"] < before]
     h2h_wins_team1 = h2h_matches[h2h_matches["team"] == team1]["target"].sum()
     h2h_wins_team2 = h2h_matches[h2h_matches["team"] == team2]["target"].sum()
     h2h_total = len(h2h_matches)
@@ -113,15 +116,17 @@ new_stats = [f"{stat}_rolling" for stat in stats]
 
 def calculate_rolling_stats(matches, stats, new_stats):
     for stat, new_stat in zip(stats, new_stats):
-        matches[new_stat] = matches.groupby("team")[stat].transform(lambda x: x.rolling(5, min_periods=1).mean())
+        # shift(1): the average of the 5 matches before this one, without this match's own stats
+        # (a team's first match gets NaN, which XGBoost treats as a missing value)
+        matches[new_stat] = matches.groupby("team")[stat].transform(lambda x: x.shift(1).rolling(5, min_periods=1).mean())
     return matches
 
 
 matches = calculate_rolling_stats(matches, stats, new_stats)
 
-# Add Head-to-Head stats
-matches["h2h_team1"] = matches.apply(lambda row: calculate_head_to_head(matches, row["team"], row["opponent"])[0], axis=1)
-matches["h2h_team2"] = matches.apply(lambda row: calculate_head_to_head(matches, row["team"], row["opponent"])[1], axis=1)
+# Add Head-to-Head stats, from earlier matches only
+matches["h2h_team1"] = matches.apply(lambda row: calculate_head_to_head(matches, row["team"], row["opponent"], row["date"])[0], axis=1)
+matches["h2h_team2"] = matches.apply(lambda row: calculate_head_to_head(matches, row["team"], row["opponent"], row["date"])[1], axis=1)
 
 # Select features
 features = ["h/a", "opp", "hour", "day", "team_elo", "expected_score", "h2h_team1", "h2h_team2"] + new_stats
@@ -152,17 +157,19 @@ opp_codes = dict(zip(matches["opponent"], matches["opp"]))
 # most recent match (used when it is team1)
 team_data = {}
 for team in sorted(matches["team"].unique()):
-    latest = matches[matches["team"] == team].sort_values("date").iloc[-1]
+    played = matches[matches["team"] == team].sort_values("date")
+    latest = played.iloc[-1]
     team_data[team] = {
         "opp": int(opp_codes[team]),
         "hour": int(latest["hour"]),
         "day": int(latest["day"]),
         "team_elo": float(latest["team_elo"]),
         "expected_score": float(latest["expected_score"]),
-        **{stat: float(latest[stat]) for stat in new_stats},
+        # The next match comes after all played ones, so its average includes the latest match
+        **{new_stat: float(played[stat].tail(5).mean()) for stat, new_stat in zip(stats, new_stats)},
     }
 
-# Head-to-head share of wins for every ordered pair of teams
+# Head-to-head share of wins for every ordered pair of teams (all matches are before the next one)
 h2h = {}
 for team1 in team_data:
     h2h[team1] = {}
