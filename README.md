@@ -1,622 +1,188 @@
-# Premier League Stats & Prediction Platform
+# Premier League Stats & Match Prediction
 
-A comprehensive, cloud-native web application for exploring Premier League statistics and predicting match outcomes using machine learning. Built with modern microservices architecture, event-driven processing, and automated CI/CD deployment.
+A web application for browsing Premier League player statistics and predicting match outcomes with an
+XGBoost model. It runs locally with Docker Compose: a React frontend, a Spring Boot REST API with
+PostgreSQL and a Redis cache, a Python prediction model, and a Kafka pipeline (scraper → Kafka → data
+processor → PostgreSQL) for loading new player data.
 
 ![Welcome Page](Frontend/public/welcome.PNG)
 
-## 🚀 Features
+## Engineering highlights
 
-### 📊 Player Statistics
+- **Prediction latency cut from 2.45 s to 0.59 s** (median of 10 requests on one machine) by training the
+  model once when the Docker image is built, instead of on every request.
+- **Safe process handling**: each prediction runs Python with a 10 s timeout; a process that runs over is
+  killed. Unknown or identical teams return **400** with a message, model failures and timeouts return **503**.
+- **Target leakage found and fixed**: rolling averages and head-to-head features used the result of the
+  match being predicted. After the fix, test accuracy is an honest **0.66 vs 0.62** for a baseline that
+  always predicts "not a win" (it was 0.80 with the leak).
+- **Redis cache** for player queries, with a 10 minute TTL and eviction of all player caches on every write.
+- **Kafka consumer with manual acknowledgment**: the offset is committed only after the player is saved.
+- **126 tests in Java, Python and React** (67 backend, 9 data processor, 5 pytest, 45 frontend), run by
+  GitHub Actions on every pull request.
 
-- **Comprehensive Player Database**: Browse detailed statistics for all Premier League players
-- **Advanced Filtering**: Filter players by team, position, nationality, and performance metrics
-- **Interactive Data Visualization**: Clean, responsive interface for exploring player data
+## Features
 
-### 🤖 Match Prediction
-
-- **ML-Powered Predictions**: Advanced machine learning model using XGBoost and statistical analysis
-- **Real-time Predictions**: Get instant match outcome predictions for any two Premier League teams
-- **Historical Performance**: Predictions based on comprehensive historical data and team statistics
+- **Player statistics**: 575 players of the 2022-23 season. Browse by team, position or nationality, or search
+  by name. Stats: matches, starts, minutes, goals, assists, penalties, cards, xG and xAG.
+- **Player API**: create, update and delete players through the REST API.
+- **Match prediction**: enter two teams and get a predicted result with a probability. Team names ignore
+  letter case and surrounding spaces, and full names such as "Manchester United" work.
 
 ![Match Prediction](Frontend/public/match-prediction.PNG)
 
-### 🔍 Smart Search & Filtering
+## Architecture
 
-- **Multi-criteria Search**: Search players by name, team, position, or nationality
-- **Performance-based Filtering**: Filter by goals, assists, playing time, and other key metrics
-- **Responsive Design**: Optimized for desktop and mobile viewing
+```
+┌──────────────┐  player-data  ┌─────────┐       ┌────────────────┐
+│ Scraper      │──────────────▶│  Kafka  │──────▶│ Data processor │──┐
+│ (Python)     │               └─────────┘       │ (Spring Boot)  │  │
+└──────────────┘                                 └────────────────┘  │
+                                                                      ▼
+┌──────────────┐     HTTP      ┌────────────────┐               ┌────────────┐
+│ Frontend     │──────────────▶│ Backend API    │──────────────▶│ PostgreSQL │
+│ (React,nginx)│               │ (Spring Boot)  │               └────────────┘
+└──────────────┘               │                │──────────────▶┌────────────┐
+                               │                │               │   Redis    │
+                               │                │──────────────▶└────────────┘
+                               └────────────────┘  predict.py (Python process)
+```
 
-### Quick AWS Free Deployment:
+| Component | What it does |
+|---|---|
+| `Frontend/` | React app (Create React App, SASS), served by nginx on port 3000. Calls the API at `http://localhost:8080`. |
+| `Backend/` | Spring Boot 3.1 / Java 17 REST API on port 8080. PostgreSQL with Flyway migrations, Redis cache, Actuator health checks. Loads the bundled player CSV on startup when the table is empty. |
+| `Backend/prediction/` | The model. `train.py` runs during the Docker image build and saves the model; `predict.py` runs once per prediction request. |
+| `Backend/data-processor-service/` | Spring Boot Kafka consumer on port 8081. Reads the `player-data` topic and saves players to PostgreSQL. |
+| `DataScraping/` | Python scraper (requests, Beautiful Soup) that publishes player stats to Kafka. Optional (compose profile `scraper`). |
+| Kafka + Zookeeper | Message broker between the scraper and the data processor. Kafdrop UI on port 8090. |
 
-1. **Launch Free Tier EC2**:
+## Running it
+
+Requirements: Docker with Docker Compose v2.
 
 ```bash
-# t2.micro instance (free tier eligible)
-aws ec2 run-instances --image-id ami-0abcdef1234567890 --instance-type t2.micro --key-name your-key
+docker compose up -d --build
 ```
 
-2. **Create Free RDS**:
+or `bash deploy-local.sh`, which also waits for the services and creates the Kafka topics
+(`--with-scraper` also runs the scraper, `--help` lists the options).
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8080 |
+| Data processor | http://localhost:8081 |
+| Kafdrop (Kafka UI) | http://localhost:8090 |
+
+Run the scraper: `docker compose --profile scraper up scraper` (see Limitations).
+Start with an empty database: `docker compose down -v` (deletes this project's volumes).
+
+Configuration (set in `docker-compose.yml`): `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`,
+`SPRING_DATASOURCE_PASSWORD`, `REDIS_HOST`, `CACHE_TTL` (default `10m`), `SPRING_KAFKA_BOOTSTRAP_SERVERS`
+(data processor), `KAFKA_BOOTSTRAP_SERVERS` (scraper).
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/v1/player` | All players |
+| GET | `/api/v1/player?team=Manchester-United` | Players of a team, exact name as stored (can be combined with `position`) |
+| GET | `/api/v1/player?name=saka` | Search by name (case-insensitive, part of the name) |
+| GET | `/api/v1/player?position=FW` | Filter by position (case-insensitive, part of the value) |
+| GET | `/api/v1/player?nation=ENG` | Filter by nationality (case-insensitive, part of the value) |
+| POST | `/api/v1/player` | Add a player (400 without a name) |
+| PUT | `/api/v1/player` | Update a player (404 if not found) |
+| DELETE | `/api/v1/player/{name}` | Delete a player |
+| POST | `/api/match-prediction` | Predict a match |
+| GET | `/actuator/health` | Health of the API, database and Redis |
+
+Prediction example:
 
 ```bash
-# db.t2.micro PostgreSQL (free tier eligible)
-aws rds create-db-instance --db-instance-identifier premiere-db --db-instance-class db.t2.micro --engine postgres
+curl -X POST http://localhost:8080/api/match-prediction \
+  -H "Content-Type: application/json" \
+  -d '{"team1": "Arsenal", "team2": "Chelsea"}'
+# {"Result": "<team> Wins" or "Draw", "Probability": <number between 0 and 1>}
+# Unknown or identical teams: 400 {"error": "..."}; model failure or timeout: 503
 ```
 
-3. **Deploy Application**:
+## Data
+
+- **Players**: `Backend/src/main/resources/data/prem_stats.csv`, from fbref.com. 2022-23 season, stats up to
+  the November 2022 World Cup break (14-15 matches per team). The file has 587 player rows plus 20 "Squad
+  Total" rows. 12 players who moved clubs mid-season appear twice, and the name is the primary key, so the
+  database holds **575 players**.
+- **Matches**: `Backend/prediction/matches.csv`, 1,389 rows (one row per team per match) from September 2020
+  to April 2022.
+
+## Prediction model
+
+- XGBoost classifier that predicts whether team1 wins (win vs. draw/loss). Features: home/away, opponent,
+  kick-off hour and day, Elo rating, rolling averages of the last 5 matches (goals for/against, shots, shots on
+  target) and head-to-head win share.
+- Trained on matches from 2021, tested on 282 rows from 2022.
+- `train.py` runs during the Docker image build and writes `model/model.json` and `model/teams.json`.
+  `predict.py` only loads them, so a request no longer retrains the model (2.45 s → 0.59 s median; most of
+  the remaining time is importing pandas and XGBoost).
+- **Leakage fix**: the rolling averages included the match being predicted and the head-to-head share used
+  all matches, including later ones. Now rolling averages use only earlier matches (`shift(1)`) and
+  head-to-head only matches before the date.
+
+| | Accuracy (2022 test set) | Precision |
+|---|---|---|
+| Before the leakage fix | 0.80 | 0.74 |
+| After the leakage fix | **0.66** | 0.57 |
+| Baseline: always "not a win" | 0.62 | – |
+
+The API turns the win probability into a label: "Draw" when it is between 0.45 and 0.55, "team1 Wins" above,
+"team2 Wins" below. Team1 is treated as the home team.
+
+## Tests and CI
+
+| Suite | Tool | Tests |
+|---|---|---|
+| Backend | JUnit 5, Spring Boot Test, H2 | 67 |
+| Data processor | JUnit 5, Mockito, `@DataJpaTest` on H2 | 9 |
+| Prediction model | pytest | 5 |
+| Frontend | Jest, React Testing Library | 45 (12 suites) |
+
+The Java prediction tests start a small fake predictor process instead of Python, so they test the process
+handling (result, 400, 503, timeout and kill) without the model. The Python script is tested with pytest.
+The backend tests need no Docker, PostgreSQL or Redis.
 
 ```bash
-# SSH to EC2 and run docker-compose
-ssh -i your-key.pem ec2-user@your-ec2-ip
-git clone your-repo && cd premiere
-docker-compose -f docker-compose.prod.yml up -d
+cd Backend && ./mvnw test                                        # backend
+cd Backend && ./mvnw -f data-processor-service/pom.xml test       # data processor
+cd Backend/prediction && pip install -r ../requirements-dev.txt \
+  && python train.py && python -m pytest tests                    # prediction model
+cd Frontend && npm ci && npm test -- --watchAll=false             # frontend
 ```
 
-## 📱 Application Overview
-
-### 📊 Player Statistics Dashboard
-
-- **468 Players** loaded from all Premier League teams
-- **Real-time filtering** by position, team, nationality
-- **Performance metrics** including goals, assists, playing time
-- **Responsive design** for mobile and desktop
-
-### 🔄 Kafka Event Streaming
-
-- **Real-time data processing** via Apache Kafka
-- **Event-driven architecture** for scalable microservices
-- **Monitoring dashboard** at `localhost:8090` (Kafdrop UI)
-- **Message throughput**: Handles thousands of events per second
-
-## 🏗️ Architecture Overview
-
-This application follows a modern **microservices architecture** with **event-driven processing**:
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Web Scraper   │───▶│     Kafka        │───▶│ Data Processor  │
-│   (Python)      │    │   Message Bus    │    │  Microservice   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │                        │
-                                │                        ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Frontend      │───▶│   Backend API    │───▶│   PostgreSQL    │
-│   (React)       │    │ (Spring Boot)    │    │    Database     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
-
-### Key Architectural Benefits:
-
-- **Scalability**: Independent scaling of each microservice
-- **Resilience**: Fault isolation and graceful degradation
-- **Maintainability**: Clear separation of concerns
-- **Event-Driven**: Asynchronous processing for better performance
-
-## 🛠️ Technology Stack
-
-### Frontend
-
-- **React.js** - Modern UI framework
-- **SASS/SCSS** - Advanced styling and responsive design
-- **React Router** - Client-side routing
-- **Axios** - HTTP client for API communication
-- **Font Awesome** - Professional icons and UI elements
-- **Nginx** - Production web server with reverse proxy
-
-### Backend Microservices
-
-- **Java Spring Boot** - RESTful API framework
-- **Spring Data JPA** - Database abstraction layer
-- **Spring Kafka** - Event streaming integration
-- **Spring Boot Actuator** - Production monitoring and health checks
-- **PostgreSQL** - Robust relational database
-- **Flyway** - Database migration management
-
-### Event Streaming & Messaging
-
-- **Apache Kafka** - Distributed event streaming platform
-- **Zookeeper** - Kafka cluster coordination
-- **Kafka UI** - Web-based Kafka monitoring
-
-### Machine Learning
-
-- **Python** - Data processing and ML implementation
-- **XGBoost** - Gradient boosting for match predictions
-- **Scikit-learn** - Machine learning utilities
-- **Pandas** - Data manipulation and analysis
-
-### Data Collection
-
-- **Web Scraping** - Automated data collection with Kafka integration
-- **Beautiful Soup** - HTML parsing and data extraction
-- **Kafka Python Client** - Event publishing
-
-### DevOps & Infrastructure
-
-- **Docker** - Containerization
-- **Docker Compose** - Multi-container orchestration
-- **GitHub Actions** - CI/CD automation
-- **AWS EC2** - Cloud hosting
-- **AWS RDS** - Managed database service
-- **AWS ECR** - Container registry
-- **AWS S3** - Static asset hosting (optional)
-
-## 🧪 Testing Suite
-
-### Frontend Testing (Jest)
-
-- **12 Test Suites** with **44 comprehensive tests**
-- **Component Testing**: All React components fully tested
-- **User Interaction Testing**: Button clicks, form submissions, navigation
-- **API Integration Testing**: Mocked HTTP requests and responses
-- **Error Handling**: Loading states, error messages, edge cases
-- **Search & Filtering**: Multi-criteria search functionality
-
-**Test Coverage:**
-
-- ✅ AnimatedLetters Component
-- ✅ Home Component
-- ✅ DataHandling Component
-- ✅ App Component
-- ✅ Sidebar Component
-- ✅ Layout Component
-- ✅ MatchPrediction Component
-- ✅ Teams Component
-- ✅ Position Component
-- ✅ Nation Component
-- ✅ Search Component
-- ✅ TeamData Component
-
-```bash
-# Run frontend tests
-cd Frontend
-npm test
-```
-
-### Backend Testing (JUnit & Spring Boot Test)
-
-- **Unit Tests**: Service layer and business logic testing
-- **Integration Tests**: Full API endpoint testing with test database
-- **Controller Tests**: REST API endpoint validation
-- **Repository Tests**: Database operations and queries
-- **Prediction Service Tests**: Machine learning model integration
-
-**Test Coverage:**
-
-- ✅ PlayerController (REST API endpoints)
-- ✅ PlayerService (Business logic)
-- ✅ PlayerRepository (Database operations)
-- ✅ MatchPredictionController (ML prediction API)
-- ✅ PredictionService (ML model integration)
-- ✅ Integration Tests (Full application flow)
-
-```bash
-# Run backend tests
-cd Backend
-mvn test
-```
-
-## 📁 Complete Project Structure
-
-```
-premiere/
-├── Backend/                              # 🚀 Main Spring Boot API
-│   ├── src/main/java/com/example/pl_connect/
-│   │   ├── PlConnectApplication.java     # Application entry point
-│   │   ├── controller/                   # 🎯 REST API Controllers
-│   │   │   └── PlayerController.java     # Player API endpoints
-│   │   ├── service/                      # 🔧 Business Logic Services
-│   │   │   └── PlayerService.java        # Player business logic
-│   │   ├── player/                       # 👤 Player Domain
-│   │   │   ├── Player.java              # Player entity
-│   │   │   ├── PlayerRepository.java    # Data access layer
-│   │   │   └── PlayerConfig.java        # Player configuration
-│   │   ├── prediction/                   # 🤖 ML Prediction
-│   │   │   ├── MatchPredictionController.java  # ML prediction API
-│   │   │   ├── MatchPredictionRequest.java     # Request models
-│   │   │   └── PredictionService.java          # Prediction logic
-│   │   └── config/
-│   │       ├── DataInitializer.java      # Database initialization
-│   │       └── CorsConfig.java          # CORS configuration
-│   ├── src/test/java/                    # 🧪 Backend Tests
-│   │   └── com/example/pl_connect/
-│   │       ├── player/
-│   │       │   ├── PlayerControllerTest.java    # Controller tests
-│   │       │   ├── PlayerServiceTest.java       # Service tests
-│   │       │   └── PlayerRepositoryTest.java    # Repository tests
-│   │       ├── prediction/
-│   │       │   ├── MatchPredictionControllerTest.java
-│   │       │   └── PredictionServiceTest.java
-│   │       ├── integration/
-│   │       │   └── PlayerIntegrationTest.java   # Integration tests
-│   │       └── PlConnectApplicationTests.java   # Application tests
-│   ├── src/main/resources/
-│   │   ├── application.properties       # Application configuration
-│   │   ├── application-test.properties  # Test configuration
-│   │   ├── data/prem_stats.csv         # Player statistics data
-│   │   ├── db/migration/               # Flyway database migrations
-│   │   └── python/pred.py              # Python ML model
-│   ├── Dockerfile                      # Container configuration
-│   └── pom.xml                        # Maven dependencies
-│
-├── Backend/data-processor-service/      # 🔄 Kafka Data Processor
-│   ├── src/main/java/com/example/dataprocessor/
-│   │   ├── DataProcessorApplication.java    # Microservice entry point
-│   │   ├── consumer/
-│   │   │   └── PlayerDataConsumer.java     # Kafka message consumer
-│   │   ├── entity/Player.java              # Player entity
-│   │   ├── model/PlayerData.java           # Data transfer object
-│   │   ├── service/PlayerDataService.java  # Business logic
-│   │   └── repository/PlayerRepository.java # Data persistence
-│   ├── src/main/resources/
-│   │   └── application.yml             # YAML configuration
-│   ├── Dockerfile                      # Container configuration
-│   └── pom.xml                        # Maven dependencies
-│
-├── Frontend/                           # ⚛️ React Application
-│   ├── src/
-│   │   ├── App.js                     # Main application component
-│   │   ├── components/
-│   │   │   ├── Home/index.js          # Home dashboard
-│   │   │   ├── Teams/index.js         # Teams overview
-│   │   │   ├── Search/index.js        # Player search
-│   │   │   ├── Position/index.js      # Position filtering
-│   │   │   ├── Nation/index.js        # Nationality filtering
-│   │   │   ├── MatchPrediction/index.js # ML predictions
-│   │   │   ├── DataHandling/index.js  # Data management
-│   │   │   ├── Sidebar/index.js       # Navigation
-│   │   │   ├── Layout/index.js        # Page layout
-│   │   │   └── AnimatedLetters/index.js # UI animations
-│   │   ├── data/
-│   │   │   ├── teams.json             # Team data
-│   │   │   ├── positions.json         # Position data
-│   │   │   └── nations.json           # Country data
-│   │   └── assets/images/             # Application images
-│   ├── src/                           # 🧪 Frontend Tests
-│   │   ├── components/
-│   │   │   ├── AnimatedLetters/AnimatedLetters.test.js
-│   │   │   ├── Home/Home.test.js
-│   │   │   ├── DataHandling/DataHandling.test.js
-│   │   │   ├── Sidebar/Sidebar.test.js
-│   │   │   ├── Layout/Layout.test.js
-│   │   │   ├── MatchPrediction/MatchPrediction.test.js
-│   │   │   ├── Teams/Teams.test.js
-│   │   │   ├── Position/Position.test.js
-│   │   │   ├── Nation/Nation.test.js
-│   │   │   ├── Search/Search.test.js
-│   │   │   └── TeamData/TeamData.test.js
-│   │   └── App.test.js               # Main app tests
-│   ├── public/
-│   │   ├── welcome.PNG                # Home page screenshot
-│   │   ├── match-prediction.PNG       # Prediction page screenshot
-│   │   ├── teams/                     # Team logos (20 PNG files)
-│   │   └── positions/                 # Position images
-│   ├── package.json                   # Node.js dependencies
-│   ├── Dockerfile                     # Container configuration
-│   └── nginx.conf                     # Production web server
-│
-├── DataScraping/                      # 🕷️ Web Scraping with Kafka
-│   ├── PL_Data_Scraping_Kafka.py     # Kafka-enabled scraper
-│   ├── Dockerfile                     # Container configuration
-│   └── requirements.txt               # Python dependencies
-│
-├── MatchPredicting/                   # 🤖 ML Prediction Models
-│   ├── pred.py                        # XGBoost prediction model (main)
-│   └── matches.csv                    # Training data
-│
-├── .github/workflows/                 # 🔄 CI/CD Pipeline
-│   └── ci-cd-pipeline.yml            # GitHub Actions workflow
-│
-├── 📄 Configuration Files
-├── docker-compose.yml                 # Development environment
-├── docker-compose.prod.yml            # Production environment
-├── deploy-local.sh                    # Local deployment script
-├── DEPLOYMENT_GUIDE.md               # Deployment instructions
-└── README.md                         # Project documentation
-
-📊 Total Files: 100+ files across 8 major components
-🎯 Languages: Java, JavaScript, Python, SQL, YAML, Dockerfile
-🏗️ Architecture: Microservices + Event-Driven + ML + React SPA
-```
-
-## 🔄 Kafka Event Streaming - TODO & Future Enhancements
-
-### Current Implementation:
-
-- ✅ Kafka cluster with Zookeeper
-- ✅ Data processor microservice consuming player data
-- ✅ Web scraper publishing to Kafka topics
-- ✅ Kafka UI for monitoring and management
-
-### 🚧 Planned Kafka Enhancements:
-
-#### 1. **Real-time Match Events**
-
-- **Live Match Data Streaming**: Real-time goals, cards, substitutions
-- **Event Topic**: `match-events` with live game updates
-- **Consumer**: Match event processor for live statistics
-- **Frontend**: Live match dashboard with real-time updates
-
-#### 2. **Player Performance Analytics**
-
-- **Performance Metrics Topic**: `player-performance`
-- **Real-time Statistics**: Goals, assists, passes, tackles per match
-- **ML Pipeline**: Stream processing for performance predictions
-- **Alerts**: Performance threshold notifications
-
-#### 3. **Enhanced Data Processing**
-
-- **Stream Processing**: Kafka Streams for complex event processing
-- **Data Validation**: Schema registry for message validation
-- **Error Handling**: Dead letter queues for failed messages
-- **Partitioning**: Optimized topic partitioning by team/league
-
-### Implementation Priority:
-
-1. 🔥 **High**: Real-time match events streaming
-2. 🔥 **High**: Enhanced error handling and monitoring
-3. 📊 **Medium**: Player performance analytics pipeline
-4. 📊 **Medium**: Stream processing with Kafka Streams
-5. 🚀 **Low**: Multi-league support and scaling
-
-## 🚀 Getting Started
-
-### 🎯 One-Click Deployment with deploy-local.sh
-
-The easiest way to run the entire platform is using our automated deployment script:
-
-```bash
-git clone <repository-url>
-cd premiere
-chmod +x deploy-local.sh
-./deploy-local.sh
-```
-
-**What the script does:**
-
-- ✅ Checks Docker and Docker Compose availability
-- 🧹 Cleans up previous containers
-- 🏗️ Builds and starts all microservices
-- ⏳ Waits for all services to be healthy
-- 📨 Creates necessary Kafka topics
-- 📊 Shows service status and URLs
-
-**Script options:**
-
-```bash
-./deploy-local.sh --with-scraper    # Also runs web scraper
-./deploy-local.sh --help            # Show help
-```
-
-**After deployment, access:**
-
-- 🌐 **Frontend**: http://localhost:3000
-- 🔧 **Backend API**: http://localhost:8080
-- ⚙️ **Data Processor**: http://localhost:8081
-- 📊 **Kafka UI**: http://localhost:8090
-
-### Manual Docker Compose Setup
-
-If you prefer manual control:
-
-```bash
-git clone <repository-url>
-cd premiere
-docker-compose up -d --build
-```
-
-**Optional web scraper:**
-
-```bash
-docker-compose --profile scraper up scraper
-```
-
-### Manual Setup
-
-#### Prerequisites
-
-- **Java 17+** - For Spring Boot backend
-- **Node.js 18+** - For React frontend
-- **PostgreSQL 12+** - Database server
-- **Python 3.8+** - For ML components and data scraping
-- **Maven 3.6+** - Java dependency management
-- **Docker & Docker Compose** - For containerized deployment
-
-#### Database Setup
-
-**Option 1: Automatic (Recommended)**
-The application uses Flyway for automatic database migrations. Tables will be created automatically on first run.
-
-**Option 2: Manual Setup**
-If you need to set up the database manually, refer to the database initialization commands. The application will handle table creation through Flyway migrations.
-
-**Note**: For production deployment, use environment variables to configure database connections securely.
-
-#### Backend Services Setup
-
-**Main Backend API:**
-
-```bash
-cd Backend
-mvn clean install
-mvn spring-boot:run
-```
-
-**Data Processor Service:**
-
-```bash
-cd Backend/data-processor-service
-mvn clean install
-mvn spring-boot:run
-```
-
-#### Frontend Setup
-
-```bash
-cd Frontend
-npm install
-npm start
-```
-
-#### Kafka Setup
-
-For local development, use the provided Docker Compose configuration or install Kafka manually.
-
-## 🔄 How the Application Works
-
-### **Data Flow Architecture:**
-
-1. **📊 Data Collection**: Web scraper collects Premier League statistics from various sources
-2. **📨 Event Streaming**: Kafka receives scraped data as JSON messages in the `player-data` topic
-3. **⚙️ Data Processing**: Data Processor microservice consumes Kafka messages and processes data
-4. **🗄️ Data Storage**: PostgreSQL stores processed player and match statistics
-5. **🔧 API Layer**: Backend API serves data to frontend via REST endpoints
-6. **🌐 User Interface**: React frontend displays interactive statistics and predictions
-
-### **Key API Endpoints:**
-
-#### Player Statistics
-
-- `GET /api/v1/player` - Get all players with filtering options
-- `GET /api/v1/player?team={team}` - Filter players by team
-- `GET /api/v1/player?position={position}` - Filter by position
-- `GET /api/v1/player?nation={nation}` - Filter by nationality
-
-#### Match Predictions
-
-- `POST /api/v1/predict` - Get match outcome prediction
-
-#### Health Monitoring
-
-- `GET /actuator/health` - Service health status
-- `GET /actuator/metrics` - Application metrics
-
-## ☁️ AWS Cloud Deployment
-
-The platform is designed for production deployment on AWS with a cloud-native architecture:
-
-### 🏗️ AWS Infrastructure
-
-#### **Core Services:**
-
-- **🖥️ EC2 Instances**: Host containerized microservices with auto-scaling groups
-- **🗄️ RDS PostgreSQL**: Managed database with automated backups and multi-AZ deployment
-- **📦 ECR (Elastic Container Registry)**: Private Docker image storage with vulnerability scanning
-- **📊 CloudWatch**: Comprehensive monitoring, logging, and alerting
-- **🔒 IAM**: Fine-grained access control and security policies
-
-#### **Optional Enhancements:**
-
-- **🌐 CloudFront + S3**: CDN for static assets and improved global performance
-- **🔧 Application Load Balancer**: High availability and traffic distribution
-- **🔄 Auto Scaling Groups**: Automatic capacity management based on demand
-- **🔐 Secrets Manager**: Secure storage of database credentials and API keys
-
-### 🚀 Deployment Architecture
-
-#### **CI/CD Pipeline:**
-
-1. **📝 Code Push**: Developer pushes to GitHub main branch
-2. **🔨 GitHub Actions**: Automated build, test, and security scanning
-3. **📦 Container Build**: Docker images built and pushed to ECR
-4. **🚀 Deployment**: Rolling deployment to EC2 instances with health checks
-5. **📊 Monitoring**: CloudWatch monitors application health and performance
-
-#### **Production Benefits:**
-
-- **⚡ High Availability**: Multi-AZ deployment with automatic failover
-- **📈 Scalability**: Auto-scaling based on CPU, memory, and custom metrics
-- **🔒 Security**: VPC isolation, security groups, and encrypted data
-- **💰 Cost Optimization**: Pay-as-you-use with AWS Free Tier compatibility
-- **🔄 Zero Downtime**: Rolling updates with health check validation
-
-### 🧪 Production Testing
-
-Test production configuration locally:
-
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-## 🧪 Testing
-
-### Backend Tests
-
-```bash
-cd Backend
-mvn test
-
-cd Backend/data-processor-service
-mvn test
-```
-
-### Frontend Tests
-
-```bash
-cd Frontend
-npm test -- --coverage
-```
-
-### Integration Testing
-
-```bash
-docker-compose -f docker-compose.test.yml up --abort-on-container-exit
-```
-
-## 📊 Monitoring & Observability
-
-### Application Monitoring
-
-- **Spring Boot Actuator**: Health checks, metrics, and application info
-- **Kafka UI**: Real-time monitoring of message queues and topics
-- **Docker Health Checks**: Container-level health monitoring
-
-### Production Monitoring
-
-- **AWS CloudWatch**: Infrastructure and application metrics
-- **Log Aggregation**: Centralized logging for troubleshooting
-- **Alert Management**: Automated alerts for system issues
-
-## 🔧 Configuration
-
-### Environment Variables
-
-```bash
-# Database
-DATABASE_URL=jdbc:postgresql://localhost:5432/prem_stats
-DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=password
-
-# Kafka
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-
-# Spring Profiles
-SPRING_PROFILES_ACTIVE=prod
-```
-
-### Scaling Configuration
-
-- **Kafka Partitions**: Increase for higher throughput
-- **Database Connections**: Configure connection pooling
-- **Container Resources**: Adjust CPU and memory limits
-
-### Development Guidelines
-
-- Follow microservices best practices
-- Write comprehensive tests
-- Update documentation
-- Use conventional commit messages
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Premier League for providing statistical data
-- Apache Kafka community for excellent event streaming platform
-- Spring Boot team for outstanding microservices framework
-- Open source community for excellent libraries and frameworks
-
----
-
-**Note**: This application demonstrates modern software architecture patterns including microservices, event-driven architecture, containerization, and cloud-native deployment. All data is used in accordance with fair use policies.
+GitHub Actions (`.github/workflows/ci-cd-pipeline.yml`) runs 5 jobs on every pull request and on pushes to
+`main` and `develop`: backend tests, data processor tests, prediction tests, frontend tests and production
+build, and a build of all 4 Docker images. It does not deploy anything.
+
+## Limitations
+
+- **The scraper is blocked**: fbref.com answers 403 Forbidden, so the database is filled from the bundled CSV.
+  The Kafka → data processor → PostgreSQL path was checked by hand with a test message sent to the
+  `player-data` topic.
+- **Old data**: players from 2022-23 (until November 2022), matches until April 2022.
+- **Elo leak**: most matches appear twice (once per team), so Elo is updated twice per match, and the second
+  row already includes that match's result. Not fixed yet.
+- The model predicts win vs. not-win; "Draw" and "team2 Wins" are derived from that one probability.
+- One Python process per prediction request.
+- The frontend calls `http://localhost:8080` directly, so it only works locally.
+- `npm audit` reports known vulnerabilities in frontend dependencies. They are not force-fixed because
+  that needs breaking upgrades.
+- Runs locally only; there is no cloud deployment.
+
+## Tech stack
+
+- **Frontend**: React 18, React Router, SASS, axios, Font Awesome, nginx
+- **Backend**: Java 17, Spring Boot 3.1 (Web, Data JPA, Cache, Actuator), PostgreSQL 15, Flyway, Redis 7.4
+- **Messaging**: Apache Kafka (Confluent 7.4), Spring Kafka, Kafdrop
+- **Machine learning**: Python, pandas, scikit-learn, XGBoost
+- **Scraping**: Python, requests, Beautiful Soup, kafka-python
+- **Tooling**: Docker, Docker Compose, GitHub Actions, Maven, JUnit 5, Mockito, Jest, pytest
