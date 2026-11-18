@@ -238,6 +238,33 @@ class PlayerServiceTest {
     }
 
     @Test
+    void shouldUpdateStatsOfExistingPlayer() {
+        // Given
+        Player existingPlayer = new Player();
+        existingPlayer.setName("Bukayo Saka");
+        existingPlayer.setAge(22);
+        existingPlayer.setGls(5.0);
+        existingPlayer.setXg(4.5);
+
+        Player updatedPlayer = new Player();
+        updatedPlayer.setName("Bukayo Saka");
+        updatedPlayer.setAge(23);
+        updatedPlayer.setGls(7.0);
+        updatedPlayer.setXg(6.1);
+
+        when(playerRepository.findByName("Bukayo Saka")).thenReturn(Optional.of(existingPlayer));
+
+        // When
+        Player result = playerService.updatePlayer(updatedPlayer);
+
+        // Then
+        assertThat(result.getAge()).isEqualTo(23);
+        assertThat(result.getGls()).isEqualTo(7.0);
+        assertThat(result.getXg()).isEqualTo(6.1);
+        verify(playerRepository).save(existingPlayer);
+    }
+
+    @Test
     void shouldReturnNullWhenUpdatingNonExistentPlayer() {
         // Given
         Player nonExistentPlayer = new Player();

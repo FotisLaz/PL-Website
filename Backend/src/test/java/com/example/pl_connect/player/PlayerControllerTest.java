@@ -266,6 +266,21 @@ class PlayerControllerTest {
     }
 
     @Test
+    void shouldRejectPlayerWithoutName() throws Exception {
+        mockMvc.perform(post("/api/v1/player")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"team\":\"Arsenal\",\"pos\":\"MF\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/player")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"  \",\"team\":\"Arsenal\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(playerService, never()).addPlayer(any(Player.class));
+    }
+
+    @Test
     void shouldUpdatePlayerWithMissingStats() throws Exception {
         // Given
         when(playerService.updatePlayer(any(Player.class))).thenAnswer(invocation -> invocation.getArgument(0));
