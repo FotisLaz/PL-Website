@@ -67,8 +67,7 @@ jobs:
       - name: Run Backend Tests
         env:
           SPRING_PROFILES_ACTIVE: test
-          SPRING_DATA_REDIS_HOST: localhost
-          SPRING_DATA_REDIS_PORT: 6379
+          REDIS_HOST: localhost
         run: |
           cd Backend
           mvn clean test
