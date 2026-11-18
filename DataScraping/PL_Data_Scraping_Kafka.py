@@ -5,6 +5,7 @@ import requests
 import time
 import sys
 import json
+import os
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 import logging
@@ -14,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Kafka configuration
-KAFKA_BOOTSTRAP_SERVERS = ['localhost:9092']
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",")
 KAFKA_TOPIC = 'player-data'
 
 def create_kafka_producer():
