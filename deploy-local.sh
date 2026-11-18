@@ -44,7 +44,7 @@ check_docker() {
 # Check if Docker Compose is available
 check_docker_compose() {
     print_status "Checking Docker Compose..."
-    if ! command -v docker-compose &> /dev/null; then
+    if ! docker compose version > /dev/null 2>&1; then
         print_error "Docker Compose is not installed. Please install Docker Compose and try again."
         exit 1
     fi
@@ -54,29 +54,33 @@ check_docker_compose() {
 # Clean up previous containers
 cleanup() {
     print_status "Cleaning up previous containers..."
-    docker-compose down --remove-orphans || true
-    docker system prune -f || true
+    docker compose down --remove-orphans || true
     print_success "Cleanup completed"
 }
 
 # Build and start services
 start_services() {
     print_status "Building and starting microservices..."
-    docker-compose up -d --build
+    docker compose up -d --build
     
     # Wait for services to be healthy
     print_status "Waiting for services to be healthy..."
     
     # Wait for Kafka
     print_status "Waiting for Kafka to start..."
-    timeout 120s bash -c 'until docker-compose exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; do sleep 2; done'
+    timeout 120s bash -c 'until docker compose exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; do sleep 2; done'
     print_success "Kafka is ready"
     
     # Wait for PostgreSQL
     print_status "Waiting for PostgreSQL to start..."
-    timeout 60s bash -c 'until docker-compose exec postgres pg_isready -U postgres > /dev/null 2>&1; do sleep 2; done'
+    timeout 60s bash -c 'until docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do sleep 2; done'
     print_success "PostgreSQL is ready"
-    
+
+    # Wait for Redis
+    print_status "Waiting for Redis to start..."
+    timeout 60s bash -c 'until docker compose exec -T redis redis-cli ping > /dev/null 2>&1; do sleep 2; done'
+    print_success "Redis is ready"
+
     # Wait for Backend API
     print_status "Waiting for Backend API to start..."
     timeout 120s bash -c 'until curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; do sleep 5; done'
@@ -98,14 +102,14 @@ create_kafka_topics() {
     print_status "Creating Kafka topics..."
     
     # Create player-data topic
-    docker-compose exec kafka kafka-topics --create \
+    docker compose exec -T kafka kafka-topics --create \
         --topic player-data \
         --bootstrap-server localhost:9092 \
         --replication-factor 1 \
         --partitions 3 || true
     
     # Create match-data topic
-    docker-compose exec kafka kafka-topics --create \
+    docker compose exec -T kafka kafka-topics --create \
         --topic match-data \
         --bootstrap-server localhost:9092 \
         --replication-factor 1 \
@@ -118,7 +122,7 @@ create_kafka_topics() {
 show_status() {
     print_status "Service Status:"
     echo "=================================="
-    docker-compose ps
+    docker compose ps
     echo "=================================="
     
     print_status "Available Services:"
@@ -138,20 +142,20 @@ show_status() {
     print_success "All services are running! 🎉"
     echo ""
     print_status "To run the web scraper:"
-    echo "docker-compose --profile scraper up scraper"
+    echo "docker compose --profile scraper up scraper"
     echo ""
     print_status "To view logs:"
-    echo "docker-compose logs -f [service-name]"
+    echo "docker compose logs -f [service-name]"
     echo ""
     print_status "To stop all services:"
-    echo "docker-compose down"
+    echo "docker compose down"
 }
 
 # Run scraper (optional)
 run_scraper() {
     if [ "$1" = "--with-scraper" ]; then
         print_status "Running web scraper..."
-        docker-compose --profile scraper up scraper
+        docker compose --profile scraper up scraper
         print_success "Web scraper completed"
     fi
 }
