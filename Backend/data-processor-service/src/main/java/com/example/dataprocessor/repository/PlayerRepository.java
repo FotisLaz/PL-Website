@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface PlayerRepository extends JpaRepository<Player, Long> {
+public interface PlayerRepository extends JpaRepository<Player, String> {
 
     @Query("SELECT p FROM Player p WHERE p.name = :name AND p.team = :team")
     Player findByNameAndTeam(@Param("name") String name, @Param("team") String team);
